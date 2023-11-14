@@ -1,0 +1,83 @@
+#include <Servo.h>
+#include <WiFi.h>
+#include <ESPAsyncWebServer.h>
+
+Servo depthServo;  // Create a servo object for depth control
+int depthAngle = 0; // Initial depth angle
+int depthLimit = 30; // Depth limit in centimeters
+
+const int trigPin = 2;  // Define the trigger pin of the ultrasonic sensor
+const int echoPin = 3;  // Define the echo pin of the ultrasonic sensor
+
+const char *ssid = "your-ssid";
+const char *password = "your-password";
+
+AsyncWebServer server(80);
+
+void setup() {
+  Serial.begin(115200);
+
+  // Connect to Wi-Fi
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(1000);
+    Serial.println("Connecting to WiFi...");
+  }
+  Serial.println("Connected to WiFi");
+
+  // Attach the servo to the specified pin
+  depthServo.attach(9);
+
+  // Set the initial depth angle
+  depthServo.write(depthAngle);
+
+  // Set up the ultrasonic sensor
+  pinMode(trigPin, OUTPUT);
+  pinMode(echoPin, INPUT);
+
+  // Handle HTTP GET requests
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send(200, "text/plain", "Hello, ESP32!");
+  });
+
+  // Handle commands sent via HTTP POST
+  server.on("/command", HTTP_POST, [](AsyncWebServerRequest *request){
+    String command = request->arg("command");
+    handleCommand(command);
+    request->send(200, "text/plain", "Command received");
+  });
+
+  // Start server
+  server.begin();
+}
+
+void loop() {
+  // Measure the depth using the ultrasonic sensor
+  long duration, depth;
+  digitalWrite(trigPin, LOW);
+  delayMicroseconds(2);
+  digitalWrite(trigPin, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trigPin, LOW);
+  duration = pulseIn(echoPin, HIGH);
+  depth = (duration / 2) / 29.1;  // Convert the duration to depth in centimeters
+
+  // Check if the depth is less than the depth limit
+  if (depth < depthLimit) {
+    // Depth is too shallow, prevent further servo movement
+    depthAngle = constrain(depthAngle, 0, 180);
+    depthServo.write(depthAngle);
+  }
+}
+
+void handleCommand(String command) {
+  if (command == "U") {
+    depthAngle -= 30;
+  } else if (command == "D") {
+    depthAngle += 30;
+  }
+
+  depthAngle = constrain(depthAngle, 0, 180);
+  depthServo.write(depthAngle);
+}
+
